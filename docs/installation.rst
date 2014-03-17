@@ -46,8 +46,12 @@ and, if using the :doc:`parallel execution mode </usage/parallel>`:
 
 * the `multiprocessing`_ library.
 
-Please read on for important details on each dependency -- there are a few
-gotchas.
+If you're using Paramiko 1.12 or above, you will also need an additional
+dependency for Paramiko:
+
+* the `ecdsa <https://pypi.python.org/pypi/ecdsa/>`_ library
+
+Please read on for important details on these -- there are a few gotchas.
 
 Python
 ------
@@ -169,7 +173,7 @@ packages:
 
 * `git <http://git-scm.com>`_ and `Mercurial`_, in order to obtain some of the
   other dependencies below;
-* `Nose <http://code.google.com/p/python-nose/>`_
+* `Nose <https://github.com/nose-devs/nose>`_
 * `Coverage <http://nedbatchelder.com/code/modules/coverage.html>`_
 * `PyLint <http://www.logilab.org/857>`_
 * `Fudge <http://farmdev.com/projects/fudge/index.html>`_
@@ -189,15 +193,9 @@ Downloads
 =========
 
 To obtain a tar.gz or zip archive of the Fabric source code, you may visit
-either of the following locations:
-
-* The official downloads are located on `our Github account's Downloads page
-  <https://github.com/fabric/fabric/downloads>`_. This is the spot you want to
-  download from for operating system packages, as the only changing part of the
-  URL will be the filename itself and the md5 hashes will be consistent.
-* `Fabric's PyPI page <http://pypi.python.org/pypi/Fabric>`_ offers manual
-  downloads in addition to being the entry point for ``pip`` and
-  ``easy-install``.
+`Fabric's PyPI page <http://pypi.python.org/pypi/Fabric>`_, which offers manual
+downloads in addition to being the entry point for ``pip`` and
+``easy-install``.
 
 
 .. _source-code-checkouts:

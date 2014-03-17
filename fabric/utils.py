@@ -2,10 +2,10 @@
 Internal subroutines for e.g. aborting execution with an error message,
 or performing indenting on multiline output.
 """
+import os
 import sys
 import textwrap
 from traceback import format_exc
-
 
 def abort(msg):
     """
@@ -18,11 +18,20 @@ def abort(msg):
     .. _sys.exit: http://docs.python.org/library/sys.html#sys.exit
     .. _SystemExit: http://docs.python.org/library/exceptions.html#exceptions.SystemExit
     """
-    from fabric.state import output
+    from fabric.state import output, env
+    if not env.colorize_errors:
+        red  = lambda x: x
+    else:
+        from colors import red
+
     if output.aborts:
-        sys.stderr.write("\nFatal error: %s\n" % str(msg))
-        sys.stderr.write("\nAborting.\n")
-    sys.exit(1)
+        sys.stderr.write(red("\nFatal error: %s\n" % str(msg)))
+        sys.stderr.write(red("\nAborting.\n"))
+
+    if env.abort_exception:
+        raise env.abort_exception(msg)
+    else:
+        sys.exit(1)
 
 
 def warn(msg):
@@ -34,9 +43,15 @@ def warn(msg):
     provided that the ``warnings`` output level (which is active by default) is
     turned on.
     """
-    from fabric.state import output
+    from fabric.state import output, env
+
+    if not env.colorize_errors:
+        magenta = lambda x: x
+    else:
+        from colors import magenta
+
     if output.warnings:
-        sys.stderr.write("\nWarning: %s\n\n" % msg)
+        sys.stderr.write(magenta("\nWarning: %s\n\n" % msg))
 
 
 def indent(text, spaces=4, strip=False):
@@ -248,7 +263,8 @@ def _pty_size():
         import termios
         import struct
 
-    rows, cols = 24, 80
+    default_rows, default_cols = 24, 80
+    rows, cols = default_rows, default_cols
     if not win32 and sys.stdout.isatty():
         # We want two short unsigned integers (rows, cols)
         fmt = 'HH'
@@ -261,6 +277,11 @@ def _pty_size():
                 buffer)
             # Unpack buffer back into Python data types
             rows, cols = struct.unpack(fmt, result)
+            # Fall back to defaults if TIOCGWINSZ returns unreasonable values
+            if rows == 0:
+                rows = default_rows
+            if cols == 0:
+                cols = default_cols
         # Deal with e.g. sys.stdout being monkeypatched, such as in testing.
         # Or termios not having a TIOCGWINSZ.
         except AttributeError:
@@ -350,3 +371,10 @@ class RingBuffer(list):
             raise ValueError("Can't set a slice of a ring buffer!")
         else:
             return self._super.__setitem__(key, value)
+
+
+def apply_lcwd(path, env):
+    # Apply CWD if a relative path
+    if not os.path.isabs(path) and env.lcwd:
+        path = os.path.join(env.lcwd, path)
+    return path

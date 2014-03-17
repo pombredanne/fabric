@@ -447,6 +447,16 @@ class TestFileTransfers(FabricTest):
             get(remote, local)
         eq_contents(local, FILES[remote])
 
+    @server(files={'/base/dir with spaces/file': 'stuff!'})
+    def test_get_file_from_relative_path_with_spaces(self):
+        """
+        get('file') should work when the remote path contains spaces
+        """
+        # from nose.tools import set_trace; set_trace()
+        with hide('everything'):
+            with cd('/base/dir with spaces'):
+                eq_(get('file', self.path()), [self.path('file')])
+
     @server()
     def test_get_sibling_globs(self):
         """
@@ -723,6 +733,7 @@ class TestFileTransfers(FabricTest):
     #
     # put()
     #
+
     @server()
     def test_put_file_to_existing_directory(self):
         """
@@ -865,9 +876,11 @@ class TestFileTransfers(FabricTest):
             get('/foo[bar].txt', local2)
         eq_contents(local2, text)
 
+
     #
     # Interactions with cd()
     #
+
     @server()
     def test_cd_should_apply_to_put(self):
         """

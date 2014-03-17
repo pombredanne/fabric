@@ -9,8 +9,10 @@ import tempfile
 import re
 import os
 from StringIO import StringIO
+from functools import partial
 
 from fabric.api import *
+from fabric.utils import apply_lcwd
 
 
 def exists(path, use_sudo=False, verbose=False):
@@ -35,6 +37,23 @@ def exists(path, use_sudo=False, verbose=False):
         return not func(cmd).failed
 
 
+def is_link(path, use_sudo=False, verbose=False):
+    """
+    Return True if the given path is a symlink on the current remote host.
+
+    If ``use_sudo`` is True, will use `.sudo` instead of `.run`.
+
+    `.is_link` will, by default, hide all output. Give ``verbose=True`` to change this.
+    """
+    func = sudo if use_sudo else run
+    cmd = 'test -L "$(echo %s)"' % path
+    args, kwargs = [], {'warn_only': True}
+    if not verbose:
+        opts = [hide('everything')]
+    with settings(*args, **kwargs):
+        return func(cmd).succeeded
+
+
 def first(*args, **kwargs):
     """
     Given one or more file paths, returns first one found, or None if none
@@ -47,7 +66,7 @@ def first(*args, **kwargs):
 
 def upload_template(filename, destination, context=None, use_jinja=False,
     template_dir=None, use_sudo=False, backup=True, mirror_local_mode=False,
-    mode=None):
+    mode=None, pty=None):
     """
     Render and upload a template text file to a remote host.
 
@@ -75,10 +94,18 @@ def upload_template(filename, destination, context=None, use_jinja=False,
     internal `~fabric.operations.put` call; please see its documentation for
     details on these two options.
 
+    The ``pty`` kwarg will be passed verbatim to any internal
+    `~fabric.operations.run`/`~fabric.operations.sudo` calls, such as those
+    used for testing directory-ness, making backups, etc.
+
     .. versionchanged:: 1.1
         Added the ``backup``, ``mirror_local_mode`` and ``mode`` kwargs.
+    .. versionchanged:: 1.9
+        Added the ``pty`` kwarg.
     """
     func = use_sudo and sudo or run
+    if pty is not None:
+        func = partial(func, pty=pty)
     # Normalize destination to be an actual filename, due to using StringIO
     with settings(hide('everything'), warn_only=True):
         if func('test -d %s' % _expand_path(destination)).succeeded:
@@ -97,14 +124,21 @@ def upload_template(filename, destination, context=None, use_jinja=False,
     text = None
     if use_jinja:
         try:
+            template_dir = template_dir or os.getcwd()
+            template_dir = apply_lcwd(template_dir, env)
             from jinja2 import Environment, FileSystemLoader
-            jenv = Environment(loader=FileSystemLoader(template_dir or '.'))
+            jenv = Environment(loader=FileSystemLoader(template_dir))
             text = jenv.get_template(filename).render(**context or {})
+            # Force to a byte representation of Unicode, or str()ification
+            # within Paramiko's SFTP machinery may cause decode issues for
+            # truly non-ASCII characters.
+            text = text.encode('utf-8')
         except ImportError:
             import traceback
             tb = traceback.format_exc()
             abort(tb + "\nUnable to import Jinja2 -- see above.")
     else:
+        filename = apply_lcwd(filename, env)
         with open(os.path.expanduser(filename)) as inputfile:
             text = inputfile.read()
         if context:

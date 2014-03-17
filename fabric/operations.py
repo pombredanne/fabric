@@ -29,6 +29,7 @@ from fabric.utils import (
     indent,
     _pty_size,
     warn,
+    apply_lcwd
 )
 
 
@@ -251,7 +252,7 @@ def prompt(text, key=None, default='', validate=None):
 
 @needs_host
 def put(local_path=None, remote_path=None, use_sudo=False,
-    mirror_local_mode=False, mode=None, use_glob=True):
+    mirror_local_mode=False, mode=None, use_glob=True, temp_dir=""):
     """
     Upload one or more files to a remote host.
 
@@ -285,8 +286,9 @@ def put(local_path=None, remote_path=None, use_sudo=False,
     While the SFTP protocol (which `put` uses) has no direct ability to upload
     files to locations not owned by the connecting user, you may specify
     ``use_sudo=True`` to work around this. When set, this setting causes `put`
-    to upload the local files to a temporary location on the remote end, and
-    then use `sudo` to move them to ``remote_path``.
+    to upload the local files to a temporary location on the remote end
+    (defaults to remote user's ``$HOME``; this may be overridden via
+    ``temp_dir``), and then use `sudo` to move them to ``remote_path``.
 
     In some use cases, it is desirable to force a newly uploaded file to match
     the mode of its local counterpart (such as when uploading executable
@@ -358,12 +360,9 @@ def put(local_path=None, remote_path=None, use_sudo=False,
             remote_path = env.cwd.rstrip('/') + '/' + remote_path
 
         if local_is_path:
-            # Expand local paths
+            # Apply lcwd, expand tildes, etc
             local_path = os.path.expanduser(local_path)
-            # Honor lcd() where it makes sense
-            if not os.path.isabs(local_path) and env.lcwd:
-                local_path = os.path.join(env.lcwd, local_path)
-
+            local_path = apply_lcwd(local_path, env)
             if use_glob:
                 # Glob local path
                 names = glob(local_path)
@@ -393,11 +392,11 @@ def put(local_path=None, remote_path=None, use_sudo=False,
             try:
                 if local_is_path and os.path.isdir(lpath):
                     p = ftp.put_dir(lpath, remote_path, use_sudo,
-                        mirror_local_mode, mode)
+                        mirror_local_mode, mode, temp_dir)
                     remote_paths.extend(p)
                 else:
                     p = ftp.put(lpath, remote_path, use_sudo, mirror_local_mode,
-                        mode, local_is_path)
+                        mode, local_is_path, temp_dir)
                     remote_paths.append(p)
             except Exception, e:
                 msg = "put() encountered an exception while uploading '%s'"
@@ -523,8 +522,8 @@ def get(remote_path, local_path=None):
         and callable(local_path.write))
 
     # Honor lcd() where it makes sense
-    if local_is_path and not os.path.isabs(local_path) and env.lcwd:
-        local_path = os.path.join(env.lcwd, local_path)
+    if local_is_path:
+        local_path = apply_lcwd(local_path, env)
 
     ftp = SFTP(env.host_string)
 
@@ -540,7 +539,9 @@ def get(remote_path, local_path=None):
         if not os.path.isabs(remote_path):
             # Honor cwd if it's set (usually by with cd():)
             if env.get('cwd'):
-                remote_path = env.cwd.rstrip('/') + '/' + remote_path
+                remote_path_escaped = env.cwd.rstrip('/')
+                remote_path_escaped = remote_path_escaped.replace('\\ ', ' ')
+                remote_path = remote_path_escaped + '/' + remote_path
             # Otherwise, be relative to remote home directory (SFTP server's
             # '.')
             else:
@@ -1108,7 +1109,7 @@ def local(command, capture=False, shell=None):
     ``execute`` argument (which determines the local shell to use.)  As per the
     linked documentation, on Unix the default behavior is to use ``/bin/sh``,
     so this option is useful for setting that value to e.g.  ``/bin/bash``.
-    
+
     `local` is not currently capable of simultaneously printing and
     capturing output, as `~fabric.operations.run`/`~fabric.operations.sudo`
     do. The ``capture`` kwarg allows you to switch between printing and
@@ -1123,11 +1124,11 @@ def local(command, capture=False, shell=None):
     When ``capture=True``, you will not see any output from the subprocess in
     your terminal, but the return value will contain the captured
     stdout/stderr.
-    
+
     In either case, as with `~fabric.operations.run` and
     `~fabric.operations.sudo`, this return value exhibits the ``return_code``,
     ``stderr``, ``failed`` and ``succeeded`` attributes. See `run` for details.
-    
+
     `~fabric.operations.local` will honor the `~fabric.context_managers.lcd`
     context manager, allowing you to control its current working directory
     independently of the remote end (which honors
